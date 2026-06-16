@@ -7,8 +7,12 @@
   let sb = null;
   let user = null;          // auth user
   let currentUid = null;    // chống chạy afterLogin 2 lần
-  let myProfile = null;     // { id, full_name, role }
+  let myProfile = null;     // { id, full_name, email, role }
   let profilesById = {};
+  let profilesList = [];    // danh sách tài khoản đăng nhập (để admin gắn)
+  let teachers = [];        // roster giáo viên { id, full_name, user_id }
+  let teachersById = {};
+  let myTeacher = null;     // giáo viên (roster) gắn với tài khoản đang đăng nhập
   let allForWeek = [];      // lịch của tuần đang xem
   let viewDate = startOfToday();
   let recovering = false;   // đang trong luồng đặt lại mật khẩu (mở từ link email)
@@ -213,7 +217,8 @@
     setViewDate(viewDate);
   }
   function onSignedOut() {
-    user = null; currentUid = null; myProfile = null; profilesById = {}; allForWeek = [];
+    user = null; currentUid = null; myProfile = null; profilesById = {}; profilesList = [];
+    teachers = []; teachersById = {}; myTeacher = null; allForWeek = [];
     $("app").classList.add("hidden");
     showAuth(); setAuthMode("login");
     $("authPass").value = "";
@@ -221,17 +226,17 @@
   }
 
   async function ensureProfile(u) {
-    let { data } = await sb.from("profiles").select("id, full_name, role").eq("id", u.id).maybeSingle();
+    let { data } = await sb.from("profiles").select("id, full_name, email, role").eq("id", u.id).maybeSingle();
     if (!data) {
       const fullName = (u.user_metadata && u.user_metadata.full_name) || u.email.split("@")[0];
-      const ins = await sb.from("profiles").insert({ id: u.id, full_name: fullName, role: "teacher" }).select("id, full_name, role").maybeSingle();
+      const ins = await sb.from("profiles").insert({ id: u.id, full_name: fullName, email: u.email, role: "teacher" }).select("id, full_name, email, role").maybeSingle();
       data = ins.data;
     }
     return data || { id: u.id, full_name: u.email, role: "teacher" };
   }
   function isAdmin() { return myProfile && myProfile.role === "admin"; }
-  function canManage(s) { return isAdmin() || (user && s.teacher_id === user.id); }
-  function teacherDisplay(s) { return (profilesById[s.teacher_id] && profilesById[s.teacher_id].full_name) || s.teacher_name || "Giáo viên"; }
+  function canManage(s) { return isAdmin() || (myTeacher && s.teacher_id === myTeacher.id); }
+  function teacherDisplay(s) { return (teachersById[s.teacher_id] && teachersById[s.teacher_id].full_name) || s.teacher_name || "Giáo viên"; }
 
   // =====================================================================
   //  ĐIỀU HƯỚNG NGÀY
@@ -255,14 +260,25 @@
   // =====================================================================
   //  TẢI & HIỂN THỊ
   // =====================================================================
+  async function reloadRoster() {
+    const [tRes, pRes] = await Promise.all([
+      sb.from("teachers").select("id, full_name, user_id"),
+      sb.from("profiles").select("id, full_name, email, role"),
+    ]);
+    teachers = tRes.data || [];
+    teachersById = {}; teachers.forEach((t) => (teachersById[t.id] = t));
+    profilesList = pRes.data || [];
+    profilesById = {}; profilesList.forEach((p) => (profilesById[p.id] = p));
+    myTeacher = teachers.find((t) => t.user_id === (user && user.id)) || null;
+  }
+
   async function loadSchedules() {
     $("tkbWrap").classList.add("loading");
     $("loading").classList.remove("hidden");
 
-    const { data: profs } = await sb.from("profiles").select("id, full_name, role");
-    profilesById = {};
-    (profs || []).forEach((p) => (profilesById[p.id] = p));
-    fillTeacherFilter(profs || []);
+    await reloadRoster();
+    fillTeacherFilter(teachers);
+    $("manageTeachersBtn").hidden = !isAdmin();
 
     const ws = startOfWeek(viewDate), we = addDays(ws, 6);
     const { data, error } = await sb.from("schedules").select("*")
@@ -277,18 +293,18 @@
     render();
   }
 
-  function fillTeacherFilter(profs) {
+  function fillTeacherFilter(list) {
     const sel = $("teacherFilter"), cur = sel.value;
     sel.innerHTML = '<option value="all">Tất cả giáo viên</option><option value="me">Chỉ lịch của tôi</option>';
-    profs.slice().sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "vi")).forEach((p) => {
-      const o = document.createElement("option"); o.value = p.id; o.textContent = p.full_name || "(không tên)"; sel.appendChild(o);
+    list.slice().sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "vi")).forEach((t) => {
+      const o = document.createElement("option"); o.value = t.id; o.textContent = t.full_name || "(không tên)"; sel.appendChild(o);
     });
     if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
   }
   function filtered() {
     const f = $("teacherFilter").value;
     if (f === "all") return allForWeek;
-    if (f === "me") return allForWeek.filter((s) => s.teacher_id === (user && user.id));
+    if (f === "me") return allForWeek.filter((s) => myTeacher && s.teacher_id === myTeacher.id);
     return allForWeek.filter((s) => s.teacher_id === f);
   }
 
@@ -380,6 +396,10 @@
   // =====================================================================
   function openModal(schedule, presetDate, presetBuoi) {
     const isEdit = !!schedule;
+    if (!isEdit) {
+      if (isAdmin() && teachers.length === 0) { toast("Chưa có giáo viên nào — bấm “Giáo viên” để thêm trước.", "err"); return; }
+      if (!isAdmin() && !myTeacher) { toast("Tài khoản của bạn chưa được admin gắn vào giáo viên nào.", "err"); return; }
+    }
     $("modalTitle").textContent = isEdit ? "Sửa lịch học" : "Thêm lịch học";
     $("formErr").classList.add("hidden");
     $("scheduleForm").reset();
@@ -399,9 +419,14 @@
       $("fStart").value = b.start; $("fEnd").value = b.end;
     }
 
+    $("fDateNative").min = ymd(startOfToday()); // picker không cho chọn ngày quá khứ
+
     // Ô chọn giáo viên phụ trách: chỉ Admin mới thấy & đổi được
     $("fOwnerWrap").hidden = !isAdmin();
-    if (isAdmin()) fillOwnerSelect(isEdit ? schedule.teacher_id : (user && user.id));
+    if (isAdmin()) {
+      const defId = isEdit ? schedule.teacher_id : (myTeacher ? myTeacher.id : (teachers[0] && teachers[0].id));
+      fillOwnerSelect(defId);
+    }
 
     $("modal").classList.remove("hidden");
     $("fSubject").focus();
@@ -409,13 +434,9 @@
 
   function fillOwnerSelect(selectedId) {
     const sel = $("fOwner");
-    const profs = Object.values(profilesById).slice()
-      .sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "vi"));
     sel.innerHTML = "";
-    profs.forEach((p) => { const o = document.createElement("option"); o.value = p.id; o.textContent = p.full_name || "(không tên)"; sel.appendChild(o); });
-    if (selectedId && ![...sel.options].some((o) => o.value === selectedId)) {
-      const o = document.createElement("option"); o.value = selectedId; o.textContent = (myProfile && myProfile.full_name) || "Tôi"; sel.appendChild(o);
-    }
+    teachers.slice().sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "vi"))
+      .forEach((t) => { const o = document.createElement("option"); o.value = t.id; o.textContent = t.full_name || "(không tên)"; sel.appendChild(o); });
     sel.value = selectedId || "";
   }
   function closeModal() { $("modal").classList.add("hidden"); }
@@ -423,8 +444,8 @@
 
   async function saveSchedule() {
     const id = $("schedId").value;
-    const ownerId = isAdmin() ? ($("fOwner").value || user.id) : user.id;
-    const ownerName = (profilesById[ownerId] && profilesById[ownerId].full_name) || null;
+    const ownerId = isAdmin() ? $("fOwner").value : (myTeacher && myTeacher.id);
+    const ownerName = (teachersById[ownerId] && teachersById[ownerId].full_name) || null;
     const sd = dmyToYmd($("fDate").value);
     const st = normTime($("fStart").value);
     const et = normTime($("fEnd").value);
@@ -439,7 +460,9 @@
       note: $("fNote").value.trim() || null,
     };
     if (!payload.subject) return formErr("Vui lòng nhập môn học / nội dung.");
+    if (!ownerId) return formErr(isAdmin() ? "Vui lòng chọn giáo viên phụ trách." : "Tài khoản của bạn chưa được gắn vào giáo viên nào.");
     if (!sd) return formErr("Ngày không hợp lệ — nhập theo dd/mm/yyyy (vd 17/06/2026).");
+    if (sd < ymd(startOfToday())) return formErr("Chỉ được đặt lịch cho hôm nay hoặc ngày trong tương lai.");
     if (!st || !et) return formErr("Giờ không hợp lệ — nhập 24h theo HH:MM (vd 14:30).");
     if (et <= st) return formErr("Giờ kết thúc phải sau giờ bắt đầu.");
 
@@ -471,6 +494,66 @@
     const { error } = await sb.from("schedules").delete().eq("id", id);
     if (error) toast("Xóa thất bại: " + error.message, "err");
     else { toast("Đã xóa lịch.", "ok"); loadSchedules(); }
+  }
+
+  // =====================================================================
+  //  QUẢN LÝ GIÁO VIÊN (chỉ Admin)
+  // =====================================================================
+  function openTeacherModal() {
+    $("tmErr").classList.add("hidden");
+    $("tmNewName").value = "";
+    renderTeacherList();
+    $("teacherModal").classList.remove("hidden");
+    $("tmNewName").focus();
+  }
+  function closeTeacherModal() { $("teacherModal").classList.add("hidden"); }
+  function tmErr(msg) { const e = $("tmErr"); e.textContent = msg; e.classList.remove("hidden"); }
+
+  function renderTeacherList() {
+    const linkedBy = {}; // user_id -> teacherId đã gắn (để loại khỏi lựa chọn của GV khác)
+    teachers.forEach((t) => { if (t.user_id) linkedBy[t.user_id] = t.id; });
+    const rows = teachers.slice().sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "vi")).map((t) => {
+      let opts = '<option value="">— chưa gắn tài khoản —</option>';
+      profilesList.slice().sort((a, b) => (a.email || "").localeCompare(b.email || "")).forEach((p) => {
+        if (linkedBy[p.id] && linkedBy[p.id] !== t.id) return; // đã gắn cho GV khác
+        const label = (p.email || p.full_name || "?") + (p.role === "admin" ? " (admin)" : "");
+        opts += `<option value="${p.id}"${t.user_id === p.id ? " selected" : ""}>${esc(label)}</option>`;
+      });
+      return `<div class="tm-row" data-tid="${t.id}">` +
+        `<input class="tm-name" type="text" value="${esc(t.full_name)}" />` +
+        `<select class="tm-acc" title="Tài khoản đăng nhập gắn với GV này">${opts}</select>` +
+        `<div class="tm-actions">` +
+        `<button class="btn btn-sm tm-save" data-save="${t.id}">Lưu</button>` +
+        `<button class="btn danger btn-sm tm-del" data-del="${t.id}">Xóa</button>` +
+        `</div></div>`;
+    }).join("");
+    $("tmList").innerHTML = teachers.length ? rows : '<div class="tm-empty">Chưa có giáo viên nào. Thêm ở ô trên.</div>';
+  }
+
+  async function addTeacher() {
+    const name = $("tmNewName").value.trim();
+    if (!name) return tmErr("Nhập tên giáo viên.");
+    const { error } = await sb.from("teachers").insert({ full_name: name });
+    if (error) return tmErr("Thêm thất bại: " + (error.message || error));
+    $("tmNewName").value = "";
+    await loadSchedules(); renderTeacherList(); toast("Đã thêm giáo viên.", "ok");
+  }
+  async function saveTeacherRow(tid) {
+    const row = document.querySelector(`.tm-row[data-tid="${tid}"]`);
+    if (!row) return;
+    const name = row.querySelector(".tm-name").value.trim();
+    const acc = row.querySelector(".tm-acc").value || null;
+    if (!name) return tmErr("Tên giáo viên không được để trống.");
+    const { error } = await sb.from("teachers").update({ full_name: name, user_id: acc }).eq("id", tid);
+    if (error) return tmErr("Lưu thất bại: " + (error.message || error));
+    await loadSchedules(); renderTeacherList(); toast("Đã lưu giáo viên.", "ok");
+  }
+  async function deleteTeacher(tid) {
+    const t = teachersById[tid];
+    if (!confirm(`Xóa giáo viên "${t ? t.full_name : ""}"? TẤT CẢ lịch của giáo viên này cũng bị xóa. Không thể hoàn tác.`)) return;
+    const { error } = await sb.from("teachers").delete().eq("id", tid);
+    if (error) return tmErr("Xóa thất bại: " + (error.message || error));
+    await loadSchedules(); renderTeacherList(); toast("Đã xóa giáo viên.", "ok");
   }
 
   // =====================================================================
@@ -541,7 +624,24 @@
       else if (de) deleteSchedule(de.getAttribute("data-del"));
       else if (ad) { const parts = ad.getAttribute("data-add").split("|"); openModal(null, parts[0], parts[1]); }
     });
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("modal").classList.contains("hidden")) closeModal(); });
+    // Quản lý giáo viên (admin)
+    $("manageTeachersBtn").addEventListener("click", openTeacherModal);
+    $("tmClose").addEventListener("click", closeTeacherModal);
+    $("tmDone").addEventListener("click", closeTeacherModal);
+    $("teacherModal").addEventListener("click", (e) => { if (e.target === $("teacherModal")) closeTeacherModal(); });
+    $("tmAddBtn").addEventListener("click", addTeacher);
+    $("tmNewName").addEventListener("keydown", (e) => { if (e.key === "Enter") addTeacher(); });
+    $("tmList").addEventListener("click", (e) => {
+      const s = e.target.closest("[data-save]"), d = e.target.closest("[data-del]");
+      if (s) saveTeacherRow(s.getAttribute("data-save"));
+      else if (d) deleteTeacher(d.getAttribute("data-del"));
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (!$("modal").classList.contains("hidden")) closeModal();
+      else if (!$("teacherModal").classList.contains("hidden")) closeTeacherModal();
+    });
   }
 
   document.addEventListener("DOMContentLoaded", init);

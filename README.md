@@ -63,19 +63,23 @@ Tính năng "Quên mật khẩu" gửi **email chứa liên kết đặt lại**
 | `styles.css` | Giao diện (theme tối/sáng, glass, responsive) |
 | `app.js` | Logic: auth, điều hướng ngày, tải lịch, thêm/sửa/xóa |
 | `config.js` | **Bạn điền** URL + anon key Supabase |
-| `supabase-setup.sql` | SQL cài MỚI (bảng + RLS, mô hình theo ngày) |
-| `supabase-migration.sql` | SQL nâng cấp từ bản cũ sang mô hình theo ngày |
+| `supabase-setup.sql` | SQL cài MỚI (đầy đủ bảng + RLS) |
+| `supabase-migration.sql` | Nâng cấp từ bản cũ sang mô hình theo ngày |
+| `supabase-teachers.sql` | Nâng cấp thêm bảng danh sách giáo viên (roster) |
 
 ---
 
 ## 🧱 Mô hình dữ liệu
-**profiles** — `id`, `full_name`, `role` (`teacher` / `admin`)
+**profiles** — tài khoản đăng nhập: `id`, `full_name`, `email`, `role` (`teacher` / `admin`)
 
-**schedules** — lịch học:
-`id`, `teacher_id` (người tạo), `schedule_date` (ngày), `subject` (môn), `class_name` (lớp),
-`start_time`, `end_time`, `room` (phòng), `teacher_name` (GV phụ trách hiển thị), `note`.
+**teachers** — danh sách giáo viên (roster): `id`, `full_name`, `user_id` (tài khoản gắn với GV, có thể null).
+Admin tạo GV chỉ bằng **tên**; khi GV đăng ký thì gắn tài khoản (qua nút **👥 Giáo viên**) để họ tự quản lý lịch.
+
+**schedules** — lịch học: `id`, `teacher_id` → `teachers.id`, `schedule_date` (ngày), `subject`, `class_name`,
+`start_time`, `end_time`, `room`, `teacher_name`, `note`.
 
 > Buổi **Sáng/Chiều/Tối** tự suy ra từ `start_time` (< 12h = Sáng, 12–18h = Chiều, ≥ 18h = Tối).
+> Chỉ đặt được lịch cho **hôm nay trở đi** (không đặt lịch ngày quá khứ).
 
 ### Quyền (RLS)
 | Hành động | Giáo viên | Admin |

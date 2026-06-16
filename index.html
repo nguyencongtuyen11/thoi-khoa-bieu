@@ -58,6 +58,7 @@
           <option value="all">Tất cả giáo viên</option>
           <option value="me">Chỉ lịch của tôi</option>
         </select>
+        <button class="btn" id="manageTeachersBtn" hidden>👥 Giáo viên</button>
         <button class="btn primary" id="addBtn">+ Thêm lịch</button>
       </div>
 
@@ -163,6 +164,30 @@
         <div class="modal-foot">
           <button class="btn" id="modalCancel">Hủy</button>
           <button class="btn primary" id="modalSave">Lưu lịch</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== MODAL QUẢN LÝ GIÁO VIÊN (admin) ===================== -->
+    <div id="teacherModal" class="modal-backdrop hidden">
+      <div class="modal">
+        <div class="modal-head">
+          <h3>Quản lý giáo viên</h3>
+          <button class="x" id="tmClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="field-hint" style="margin-top:0;margin-bottom:12px;">
+            Thêm giáo viên chỉ cần <b>tên</b> (chưa cần tài khoản). Khi giáo viên đã đăng ký, chọn email của họ ở cột "tài khoản" để gắn — lúc đó họ tự đăng nhập & quản lý lịch của mình.
+          </p>
+          <div class="tm-add">
+            <input id="tmNewName" type="text" placeholder="Tên giáo viên mới (vd: Cô Hoa)" autocomplete="off" />
+            <button class="btn primary" id="tmAddBtn">+ Thêm</button>
+          </div>
+          <div id="tmErr" class="form-err hidden"></div>
+          <div id="tmList" class="tm-list"></div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" id="tmDone">Xong</button>
         </div>
       </div>
     </div>
