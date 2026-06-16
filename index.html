@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5" />
+  <meta name="theme-color" content="#0a0e1a" />
+  <meta name="description" content="Quản lý lịch học & thời khóa biểu cho đội ngũ giáo viên." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <title>Thời khóa biểu Giáo viên</title>
+  <link rel="icon" href="logo-favicon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="logo-icon.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="wrap">
+
+    <!-- Banner khi chưa cấu hình Supabase -->
+    <div id="configBanner" class="config-banner hidden">
+      ⚠️ Chưa cấu hình Supabase. Mở <code>config.js</code> và điền
+      <code>SUPABASE_URL</code> + <code>SUPABASE_ANON_KEY</code>.
+    </div>
+
+    <!-- ===================== APP ===================== -->
+    <div id="app" class="hidden">
+      <header class="app-head">
+        <div class="brand">
+          <div class="logo">
+            <img src="logo-icon.png" alt="Đức Mẹ Sầu Bi Đồng Đinh" />
+          </div>
+          <div>
+            <h1>Thời khóa biểu</h1>
+            <p>Lịch học của đội ngũ giáo viên</p>
+          </div>
+        </div>
+        <div class="head-right">
+          <button class="icon-btn" id="themeBtn" title="Chuyển giao diện sáng/tối" aria-label="Đổi giao diện">
+            <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          </button>
+          <div class="account" id="account">
+            <div class="avatar" id="accAvatar">?</div>
+            <div class="who">
+              <div class="name" id="accName">—</div>
+              <div class="role" id="accRole"></div>
+            </div>
+          </div>
+          <button class="icon-btn" id="logoutBtn" title="Đăng xuất" aria-label="Đăng xuất">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="toolbar">
+        <h2>Thời khóa biểu tuần</h2>
+        <div class="spacer"></div>
+        <select id="teacherFilter" title="Lọc theo giáo viên">
+          <option value="all">Tất cả giáo viên</option>
+          <option value="me">Chỉ lịch của tôi</option>
+        </select>
+        <button class="btn primary" id="addBtn">+ Thêm lịch</button>
+      </div>
+
+      <!-- Điều hướng tuần / tháng -->
+      <div class="datenav">
+        <button class="btn" data-nav="month:-1">« Tháng trước</button>
+        <button class="btn" data-nav="week:-1">‹ Tuần trước</button>
+        <div class="nav-center">
+          <div class="curdate">
+            <div class="dmy" id="navRange">—</div>
+            <div class="dow" id="navMonth">—</div>
+          </div>
+        </div>
+        <button class="btn" data-nav="week:1">Tuần sau ›</button>
+        <button class="btn" data-nav="month:1">Tháng sau »</button>
+        <span class="spacer-grow"></span>
+        <input type="date" id="datePicker" class="datepick" title="Tới tuần chứa ngày này" />
+        <button class="btn" id="todayBtn">Tuần này</button>
+      </div>
+
+      <!-- Thời khóa biểu tuần -->
+      <div class="tkb-wrap loading" id="tkbWrap">
+        <div id="loading" class="state">Đang tải…</div>
+        <div class="week-grid" id="weekGrid"></div>
+        <div class="week-list" id="weekList"></div>
+      </div>
+    </div>
+
+    <!-- ===================== AUTH OVERLAY ===================== -->
+    <div class="auth-overlay" id="authOverlay">
+      <div class="auth-card">
+        <div class="logo big">
+          <img src="logo-icon.png" alt="Đức Mẹ Sầu Bi Đồng Đinh" />
+        </div>
+        <div class="auth-content">
+        <h2 id="authTitle">Đăng nhập</h2>
+        <p class="muted" id="authSub">Đăng nhập để quản lý thời khóa biểu của cả đội</p>
+
+        <div class="field" id="fName" hidden><label>Họ và tên</label><input type="text" id="authName" placeholder="VD: Nguyễn Văn A" autocomplete="name" /></div>
+        <div class="field" id="fEmail"><label>Email</label><input type="email" id="authEmail" placeholder="email@truong.edu.vn" autocomplete="username" /></div>
+        <div class="field" id="fPass"><label>Mật khẩu</label><input type="password" id="authPass" placeholder="••••••••" autocomplete="current-password" /></div>
+        <div class="field" id="fNew" hidden><label>Mật khẩu mới</label><input type="password" id="authNew" placeholder="Tối thiểu 6 ký tự" autocomplete="new-password" /></div>
+        <div class="field" id="fNew2" hidden><label>Nhập lại mật khẩu mới</label><input type="password" id="authNew2" placeholder="••••••••" autocomplete="new-password" /></div>
+
+        <div class="auth-err" id="authErr"></div>
+        <button class="btn-add" id="authPrimary">Đăng nhập</button>
+
+        <div class="auth-links">
+          <button class="linkbtn" id="lnkForgot">Quên mật khẩu?</button>
+          <button class="linkbtn" id="lnkSignup">Tạo tài khoản mới</button>
+          <button class="linkbtn" id="lnkBack" hidden>← Quay lại đăng nhập</button>
+        </div>
+        </div><!-- /.auth-content -->
+      </div>
+    </div>
+
+    <!-- ===================== MODAL THÊM/SỬA ===================== -->
+    <div id="modal" class="modal-backdrop hidden">
+      <div class="modal">
+        <div class="modal-head">
+          <h3 id="modalTitle">Thêm lịch học</h3>
+          <button class="x" id="modalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div id="formErr" class="form-err hidden"></div>
+          <form id="scheduleForm">
+            <input type="hidden" id="schedId" />
+            <div class="field">
+              <label for="fSubject">Môn học / Nội dung *</label>
+              <input id="fSubject" type="text" placeholder="VD: Toán" required />
+            </div>
+            <div class="field">
+              <label for="fDate">Ngày *</label>
+              <input id="fDate" type="date" required />
+            </div>
+            <div class="row-2">
+              <div class="field"><label for="fStart">Giờ bắt đầu *</label><input id="fStart" type="time" required /></div>
+              <div class="field"><label for="fEnd">Giờ kết thúc *</label><input id="fEnd" type="time" required /></div>
+            </div>
+            <div class="row-2">
+              <div class="field"><label for="fClass">Lớp</label><input id="fClass" type="text" placeholder="VD: 2" /></div>
+              <div class="field"><label for="fRoom">Phòng</label><input id="fRoom" type="text" placeholder="VD: P.204" /></div>
+            </div>
+            <div class="field" id="fOwnerWrap" hidden>
+              <label for="fOwner">Giáo viên phụ trách</label>
+              <select id="fOwner"></select>
+              <div class="field-hint">Bạn là Admin — có thể xếp lịch cho bất kỳ giáo viên nào.</div>
+            </div>
+            <div class="field">
+              <label for="fNote">Ghi chú</label>
+              <textarea id="fNote" rows="2" placeholder="Tùy chọn"></textarea>
+            </div>
+          </form>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" id="modalCancel">Hủy</button>
+          <button class="btn primary" id="modalSave">Lưu lịch</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="toast-wrap" id="toastWrap"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
