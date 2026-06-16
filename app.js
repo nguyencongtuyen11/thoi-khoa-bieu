@@ -11,6 +11,8 @@
   let profilesById = {};
   let allForWeek = [];      // lịch của tuần đang xem
   let viewDate = startOfToday();
+  let recovering = false;   // đang trong luồng đặt lại mật khẩu (mở từ link email)
+  let resetDone = false;    // vừa đổi mật khẩu xong -> báo & quay lại đăng nhập
 
   const BUOI = [
     { key: "sang",  label: "Sáng",      icon: "☀️", start: "08:00", end: "09:30" },
@@ -35,6 +37,22 @@
   function parseYmd(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
   function dmy(d) { return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`; }
   function hhmm(t) { return t ? String(t).slice(0, 5) : ""; }
+  function ymdToDmy(s) { if (!s) return ""; const p = String(s).split("-"); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : ""; }
+  function dmyToYmd(s) {
+    const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return null;
+    const d = +m[1], mo = +m[2], y = +m[3];
+    const dt = new Date(y, mo - 1, d);
+    if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+    return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+  function normTime(s) {
+    const m = String(s).trim().match(/^(\d{1,2}):(\d{1,2})$/);
+    if (!m) return null;
+    const h = +m[1], mi = +m[2];
+    if (h > 23 || mi > 59) return null;
+    return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
+  }
   function buoiOf(t) { const h = parseInt(String(t).slice(0, 2), 10); return h < 12 ? "sang" : h < 18 ? "chieu" : "toi"; }
   function initials(name) { const p = String(name || "?").trim().split(/\s+/); return (p.length === 1 ? p[0].slice(0, 2) : p[0][0] + p[p.length - 1][0]).toUpperCase(); }
 
@@ -80,13 +98,19 @@
       return;
     }
 
+    // Mở từ link đặt lại mật khẩu? (URL có #...type=recovery)
+    recovering = /type=recovery/.test(location.hash);
+
     sb = window.supabase.createClient(window.APP_CONFIG.SUPABASE_URL, window.APP_CONFIG.SUPABASE_ANON_KEY);
 
+    if (recovering) { showAuth(); setAuthMode("reset"); }
+
     const { data } = await sb.auth.getSession();
-    if (data.session && data.session.user) { user = data.session.user; await afterLogin(); }
+    if (data.session && data.session.user && !recovering) { user = data.session.user; await afterLogin(); }
 
     sb.auth.onAuthStateChange((ev, session) => {
-      if (ev === "PASSWORD_RECOVERY") { showAuth(); setAuthMode("reset"); return; }
+      if (ev === "PASSWORD_RECOVERY") { recovering = true; showAuth(); setAuthMode("reset"); return; }
+      if (recovering) return; // đang đặt lại mật khẩu -> chưa vào app dù đã có phiên tạm
       if (session && session.user) { user = session.user; afterLogin(); }
       else { onSignedOut(); }
     });
@@ -146,8 +170,7 @@
     if (!/^\S+@\S+\.\S+$/.test(email)) { authErr("Email chưa đúng định dạng."); $("authEmail").focus(); return; }
     if (password.length < 6) { authErr("Mật khẩu cần tối thiểu 6 ký tự."); $("authPass").focus(); return; }
     authBusy(true, "Đang tạo...");
-    const redirectTo = location.origin.includes("localhost") ? undefined : location.origin;
-    const { data, error } = await sb.auth.signUp({ email, password, options: { data: { full_name: name || email.split("@")[0] }, emailRedirectTo: redirectTo } });
+    const { data, error } = await sb.auth.signUp({ email, password, options: { data: { full_name: name || email.split("@")[0] }, emailRedirectTo: location.origin } });
     authBusy(false);
     if (error) return authErr(friendlyAuthErr(error.message));
     if (data.session) { user = data.session.user; await afterLogin(); }
@@ -157,8 +180,7 @@
     const email = $("authEmail").value.trim();
     if (!/^\S+@\S+\.\S+$/.test(email)) { authErr("Nhập email hợp lệ để nhận liên kết."); $("authEmail").focus(); return; }
     authBusy(true, "Đang gửi...");
-    const redirectTo = location.origin.includes("localhost") ? undefined : location.origin;
-    const { error } = await sb.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin });
     authBusy(false);
     if (error) authErr(error.message);
     else authErr("✅ Đã gửi email! Mở email và bấm liên kết để đặt mật khẩu mới (xem cả Spam/Quảng cáo).", true);
@@ -171,9 +193,9 @@
     const { error } = await sb.auth.updateUser({ password: p1 });
     authBusy(false);
     if (error) return authErr(/different|same/i.test(error.message) ? "Mật khẩu mới phải khác mật khẩu cũ." : error.message);
-    authErr("✅ Đổi mật khẩu thành công!", true);
-    history.replaceState(null, "", location.pathname);
-    try { const { data } = await sb.auth.getSession(); if (data.session) { user = data.session.user; await afterLogin(); } } catch (e) {}
+    recovering = false; resetDone = true;
+    history.replaceState(null, "", location.pathname); // xóa token khỏi URL
+    await sb.auth.signOut(); // đăng xuất phiên tạm -> quay lại màn đăng nhập (onSignedOut)
   }
 
   async function afterLogin() {
@@ -195,6 +217,7 @@
     $("app").classList.add("hidden");
     showAuth(); setAuthMode("login");
     $("authPass").value = "";
+    if (resetDone) { resetDone = false; authErr("✅ Đổi mật khẩu thành công! Hãy đăng nhập lại bằng mật khẩu mới.", true); }
   }
 
   async function ensureProfile(u) {
@@ -218,7 +241,7 @@
     const ws = startOfWeek(viewDate), we = addDays(ws, 6);
     $("navRange").textContent = `${dmy(ws)} – ${dmy(we)}`;
     $("navMonth").textContent = `Tháng ${we.getMonth() + 1}, ${we.getFullYear()}`;
-    $("datePicker").value = ymd(viewDate);
+    $("datePicker").value = dmy(viewDate);
     loadSchedules();
   }
   function navigate(kind, delta) {
@@ -364,14 +387,14 @@
 
     if (isEdit) {
       $("fSubject").value = schedule.subject || "";
-      $("fDate").value = schedule.schedule_date;
+      $("fDate").value = ymdToDmy(schedule.schedule_date);
       $("fStart").value = hhmm(schedule.start_time);
       $("fEnd").value = hhmm(schedule.end_time);
       $("fClass").value = schedule.class_name || "";
       $("fRoom").value = schedule.room || "";
       $("fNote").value = schedule.note || "";
     } else {
-      $("fDate").value = presetDate || ymd(viewDate);
+      $("fDate").value = ymdToDmy(presetDate || ymd(viewDate));
       const b = BUOI.find((x) => x.key === presetBuoi) || BUOI[1];
       $("fStart").value = b.start; $("fEnd").value = b.end;
     }
@@ -402,20 +425,23 @@
     const id = $("schedId").value;
     const ownerId = isAdmin() ? ($("fOwner").value || user.id) : user.id;
     const ownerName = (profilesById[ownerId] && profilesById[ownerId].full_name) || null;
+    const sd = dmyToYmd($("fDate").value);
+    const st = normTime($("fStart").value);
+    const et = normTime($("fEnd").value);
     const payload = {
-      schedule_date: $("fDate").value,
+      schedule_date: sd,
       subject: $("fSubject").value.trim(),
-      start_time: $("fStart").value,
-      end_time: $("fEnd").value,
+      start_time: st,
+      end_time: et,
       class_name: $("fClass").value.trim() || null,
       room: $("fRoom").value.trim() || null,
       teacher_name: ownerName,
       note: $("fNote").value.trim() || null,
     };
     if (!payload.subject) return formErr("Vui lòng nhập môn học / nội dung.");
-    if (!payload.schedule_date) return formErr("Vui lòng chọn ngày.");
-    if (!payload.start_time || !payload.end_time) return formErr("Vui lòng nhập giờ bắt đầu và kết thúc.");
-    if (payload.end_time <= payload.start_time) return formErr("Giờ kết thúc phải sau giờ bắt đầu.");
+    if (!sd) return formErr("Ngày không hợp lệ — nhập theo dd/mm/yyyy (vd 17/06/2026).");
+    if (!st || !et) return formErr("Giờ không hợp lệ — nhập 24h theo HH:MM (vd 14:30).");
+    if (et <= st) return formErr("Giờ kết thúc phải sau giờ bắt đầu.");
 
     $("modalSave").disabled = true;
     try {
@@ -450,6 +476,32 @@
   // =====================================================================
   //  SỰ KIỆN
   // =====================================================================
+  // Tự chèn dấu "/" và ":" khi gõ; giữ picker lịch gốc qua input ẩn
+  function maskDate(el) {
+    el.addEventListener("input", () => {
+      const v = el.value.replace(/\D/g, "").slice(0, 8);
+      el.value = [v.slice(0, 2), v.slice(2, 4), v.slice(4, 8)].filter((x) => x.length).join("/");
+    });
+  }
+  function maskTime(el) {
+    el.addEventListener("input", () => {
+      const v = el.value.replace(/\D/g, "").slice(0, 4);
+      el.value = [v.slice(0, 2), v.slice(2, 4)].filter((x) => x.length).join(":");
+    });
+  }
+  function wireCal(btn) {
+    const id = btn.getAttribute("data-cal");
+    const text = $(id), native = $(id + "Native");
+    if (!text || !native) return;
+    btn.addEventListener("click", () => {
+      native.value = dmyToYmd(text.value) || ymd(startOfToday());
+      try { if (native.showPicker) native.showPicker(); else native.focus(); } catch (e) { native.focus(); }
+    });
+    native.addEventListener("change", () => {
+      if (native.value) { text.value = ymdToDmy(native.value); text.dispatchEvent(new Event("change")); }
+    });
+  }
+
   function wireEvents() {
     // Auth
     $("authPrimary").addEventListener("click", () => {
@@ -469,9 +521,12 @@
     document.querySelectorAll("[data-nav]").forEach((btn) => {
       btn.addEventListener("click", () => { const [k, d] = btn.getAttribute("data-nav").split(":"); navigate(k, parseInt(d, 10)); });
     });
-    $("datePicker").addEventListener("change", (e) => { if (e.target.value) setViewDate(parseYmd(e.target.value)); });
+    $("datePicker").addEventListener("change", () => { const y = dmyToYmd($("datePicker").value); if (y) setViewDate(parseYmd(y)); });
     $("todayBtn").addEventListener("click", () => setViewDate(startOfToday()));
     $("teacherFilter").addEventListener("change", render);
+    ["fDate", "datePicker"].forEach((id) => maskDate($(id)));
+    ["fStart", "fEnd"].forEach((id) => maskTime($(id)));
+    document.querySelectorAll(".cal-btn").forEach(wireCal);
 
     // Thêm/sửa/xóa
     $("addBtn").addEventListener("click", () => openModal(null, ymd(viewDate), buoiOf(new Date().toTimeString())));

@@ -208,6 +208,15 @@ header.app-head { display: flex; align-items: center; justify-content: space-bet
 .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent); }
 .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field-hint { font-size: 11.5px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+
+/* Ô ngày dd/mm/yyyy + nút lịch (giữ picker gốc bằng input ẩn) */
+.date-wrap { position: relative; display: inline-flex; align-items: center; width: 100%; }
+.date-wrap > input[type="text"] { width: 100%; padding-right: 38px; }
+.cal-btn { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 16px; line-height: 1; padding: 5px; border-radius: 8px; }
+.cal-btn:hover { background: var(--bg-soft); }
+.native-date { position: absolute; right: 10px; bottom: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+.datenav .date-wrap { width: auto; }
+.datenav .datepick { min-width: 132px; }
 .form-err { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent); border-radius: 10px; padding: 9px 12px; font-size: 13px; margin-bottom: 14px; }
 
 /* ===== AUTH OVERLAY ===== */

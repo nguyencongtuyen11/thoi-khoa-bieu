@@ -74,7 +74,11 @@
         <button class="btn" data-nav="week:1">Tuần sau ›</button>
         <button class="btn" data-nav="month:1">Tháng sau »</button>
         <span class="spacer-grow"></span>
-        <input type="date" id="datePicker" class="datepick" title="Tới tuần chứa ngày này" />
+        <div class="date-wrap">
+          <input type="text" id="datePicker" class="datepick" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" title="Tới tuần chứa ngày này" />
+          <button type="button" class="cal-btn" data-cal="datePicker" aria-label="Chọn ngày">📅</button>
+          <input type="date" id="datePickerNative" class="native-date" tabindex="-1" aria-hidden="true" />
+        </div>
         <button class="btn" id="todayBtn">Tuần này</button>
       </div>
 
@@ -130,12 +134,16 @@
               <input id="fSubject" type="text" placeholder="VD: Toán" required />
             </div>
             <div class="field">
-              <label for="fDate">Ngày *</label>
-              <input id="fDate" type="date" required />
+              <label for="fDate">Ngày (dd/mm/yyyy) *</label>
+              <div class="date-wrap">
+                <input id="fDate" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" required />
+                <button type="button" class="cal-btn" data-cal="fDate" aria-label="Chọn ngày">📅</button>
+                <input type="date" id="fDateNative" class="native-date" tabindex="-1" aria-hidden="true" />
+              </div>
             </div>
             <div class="row-2">
-              <div class="field"><label for="fStart">Giờ bắt đầu *</label><input id="fStart" type="time" required /></div>
-              <div class="field"><label for="fEnd">Giờ kết thúc *</label><input id="fEnd" type="time" required /></div>
+              <div class="field"><label for="fStart">Giờ bắt đầu — 24h *</label><input id="fStart" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" autocomplete="off" required /></div>
+              <div class="field"><label for="fEnd">Giờ kết thúc — 24h *</label><input id="fEnd" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" autocomplete="off" required /></div>
             </div>
             <div class="row-2">
               <div class="field"><label for="fClass">Lớp</label><input id="fClass" type="text" placeholder="VD: 2" /></div>
